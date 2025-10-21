@@ -24,3 +24,4 @@ Daily Edge Function scrapes WDW offer pages, hashes content, compares to last sn
 ## Monorepo notes
 - `AGENTS.md` explains build/test commands, code style, security, and PR rules.
 - `docs/PRD.md` is the living product doc with checklist and schema.
+- 
