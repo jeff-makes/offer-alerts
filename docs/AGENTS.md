@@ -1,4 +1,4 @@
 # Docs Guidance
 
 - Keep milestone notes concise and aligned with the PRD/README tone.
-- Offers Scraper Agent now supports deterministic seeding and diff-based outputs for testing downstream email automation.
+- Edge scraper now enumerates geo presets (`us`, `us-florida`, `ca`) by seeding Akamai cookies instead of filtering offers. Document any future locale additions here and in the PRD.

@@ -13,6 +13,7 @@ Get notified when new or updated Walt Disney World offers go live on the officia
 - `supabase db push` to apply migrations.
 - `supabase functions deploy offers-scraper`
 - Create a **Scheduled** job in Supabase to run `offers-scraper` daily.
+- The Edge Function seeds Akamai geo cookies to capture every visible offer; no filters (Visa/Aulani) are applied upstream anymore.
 
 ### Environment
 Copy `.env.example` to your local/hosting envs and fill in:
@@ -44,6 +45,15 @@ Daily Edge Function scrapes WDW offer pages, hashes content, compares to last sn
     -H "Content-Type: application/json" \
     http://localhost:54321/functions/v1/offers-scraper | jq
   ```
+
+### Locale presets
+- `source=us` (default) scrapes the national catalog plus the Florida-only catalog by replaying the required geo cookies.
+- `source=us-only` limits the run to the national catalog.
+- `source=us-florida` limits to the Florida preset.
+- `source=ca` scrapes the Canadian catalog (forces `en_CA` locale cookies).
+- `source=all` runs every preset (`us`, `us-florida`, `ca`).
+
+Each preset is inserted independently into Supabase with its own `source` key, so downstream tooling can filter or merge regions as needed.
 
 ## Monorepo notes
 - `AGENTS.md` explains build/test commands, code style, security, and PR rules.

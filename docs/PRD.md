@@ -7,7 +7,7 @@ _Last updated: 2025-10-21._
 - [x] Initialize Supabase project (DB + Edge Functions) — 2025-10-21 ¹
 - [x] Create tables: `offers`, `users`, `scrape_log` (schema below) ¹
 - [ ] Add Supabase Scheduled Edge Function (daily scrape) ¹
-- [x] Implement scraper logic + hashing + diff detection (Playwright or Cheerio; skip Aulani/Visa offers) ¹
+- [x] Implement scraper logic + hashing + diff detection (Cheerio DOM via `deno_dom`); capture full offer catalog with cookie-based geo presets (US national, US Florida, Canada) ¹
 - [x] Store & hash offer data; detect new/changed deals ¹
 - [x] Verify Supabase Edge Function (`offers-scraper`) deploy and run (with debug seed)
 - [x] Confirm Supabase insert/update/versioning works
@@ -23,7 +23,7 @@ _Last updated: 2025-10-21._
 ¹ From the original PRD.  
 
 ## 🧭 Product Summary
-**Goal:** Alert fans when new or updated offers appear, filtered by eligibility/region. ¹  
+**Goal:** Alert fans when new or updated offers appear, filtered by eligibility/region. Geo coverage now comes from deterministic Akamai cookie seeding (US national, Florida-only, Canada). ¹  
 **Users:** Disney planners, APs, bloggers.  
 **MVP Flow:** Daily scrape → compare hash → store/trigger email → link to official site. ¹
 
@@ -43,6 +43,7 @@ _Last updated: 2025-10-21._
 - Hashing + diff detection implemented.
 - `offer_versions` table tracks historical changes.
 - Debug seed mode added for offline testing.
+- Geo presets (national US, Florida, Canada) seeded via cookies; no upstream exclusions (Visa/Aulani) — downstream segmentation handles eligibility.
 - Environment variables verified via Supabase secrets.
 - Next: Kit email integration (v0.3).
 

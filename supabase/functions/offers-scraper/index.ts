@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 console.log("Edge function starting… environment check");
 
-type Source = "us" | "ca";
+type Source = "us" | "us-florida" | "ca";
 
 type RawOffer = {
   title: string;
@@ -62,6 +62,106 @@ const TRACKING_QUERY_KEYS = new Set([
   "ef_id",
   "affid",
 ]);
+
+function encodeCookieJson(value: Record<string, unknown>): string {
+  return encodeURIComponent(JSON.stringify(value));
+}
+
+const COOKIE_PRESETS: Record<Source, Record<string, string>> = {
+  us: {},
+  "us-florida": {
+    geolocation_aka_jar: encodeCookieJson({
+      zipCode: "32830",
+      region: "FL",
+      country: "US",
+      metro: "LAKE BUENA VISTA",
+      metroCode: "534",
+    }),
+    GEOLOCATION_jar: encodeCookieJson({
+      zipCode: "32830",
+      region: "FL",
+      country: "united states",
+      metro: "lake buena vista",
+      metroCode: "534",
+      countryisocode: "us",
+    }),
+  },
+  ca: {
+    localeCookie_jar_aka: encodeCookieJson({
+      contentLocale: "en_CA",
+      version: "3",
+      precedence: 0,
+      akamai: "true",
+    }),
+    languageSelection_jar_aka: encodeCookieJson({
+      preferredLanguage: "en_CA",
+      version: "1",
+      precedence: 0,
+      language: "en_CA",
+      akamai: "true",
+    }),
+    geolocation_aka_jar: encodeCookieJson({
+      zipCode: "M5H 2N2",
+      region: "ON",
+      country: "CA",
+      metro: "TORONTO",
+      metroCode: "0",
+    }),
+    GEOLOCATION_jar: encodeCookieJson({
+      zipCode: "M5H 2N2",
+      region: "ON",
+      country: "canada",
+      metro: "toronto",
+      metroCode: "0",
+      countryisocode: "ca",
+    }),
+  },
+};
+
+type GeoPreset = {
+  source: Source;
+  baseUrl: string;
+  cookies: Record<string, string>;
+};
+
+type OfferCounts = {
+  found: number;
+  new: number;
+  changed: number;
+  same: number;
+};
+
+function resolveSources(sourceParam: string | null): Source[] {
+  if (!sourceParam || sourceParam === "us") {
+    return ["us", "us-florida"];
+  }
+  if (sourceParam === "us-only") {
+    return ["us"];
+  }
+  if (sourceParam === "us-florida") {
+    return ["us-florida"];
+  }
+  if (sourceParam === "ca") {
+    return ["ca"];
+  }
+  if (sourceParam === "all") {
+    return ["us", "us-florida", "ca"];
+  }
+
+  throw new Error(`Unsupported source parameter '${sourceParam}'`);
+}
+
+function buildPreset(
+  source: Source,
+  baseUrls: { us: string; ca: string }
+): GeoPreset {
+  const baseUrl = source === "ca" ? baseUrls.ca : baseUrls.us;
+  return {
+    source,
+    baseUrl,
+    cookies: COOKIE_PRESETS[source] ?? {},
+  };
+}
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -147,13 +247,17 @@ async function canonicalizeOffers(
   return canonicalOffers;
 }
 
-async function fetchText(url: string): Promise<string> {
+async function fetchText(url: string, initialCookies: Record<string, string> = {}): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     let currentUrl = url;
     const visited = new Set<string>();
-    const cookieJar: CookieJar = new Map([["gp", "1"]]);
+    const cookieEntries: [string, string][] = [["gp", "1"]];
+    for (const [name, value] of Object.entries(initialCookies)) {
+      cookieEntries.push([name, value]);
+    }
+    const cookieJar: CookieJar = new Map(cookieEntries);
 
     for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
       const cookieState = Array.from(cookieJar.entries())
@@ -228,9 +332,10 @@ async function fetchText(url: string): Promise<string> {
 
 async function scrapeOffers(
   source: Source,
-  baseUrl: string
+  baseUrl: string,
+  initialCookies: Record<string, string> = {}
 ): Promise<RawOffer[]> {
-  const html = await fetchText(baseUrl);
+  const html = await fetchText(baseUrl, initialCookies);
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
@@ -442,7 +547,6 @@ Deno.serve(async (req) => {
 
     const requestUrl = new URL(req.url);
     const sourceParam = requestUrl.searchParams.get("source");
-    const source: Source = sourceParam === "ca" ? "ca" : "us";
 
     const usUrl =
       Deno.env.get("DISNEY_BASE_URL") ??
@@ -451,46 +555,64 @@ Deno.serve(async (req) => {
       Deno.env.get("DISNEY_CA_URL") ??
       "https://disneyworld.disney.go.com/en_CA/special-offers/";
 
-    const baseUrl = source === "ca" ? caUrl : usUrl;
+    const baseUrls = { us: usUrl, ca: caUrl };
+    const sourcesToRun = resolveSources(sourceParam);
+    const presets = sourcesToRun.map((src) => buildPreset(src, baseUrls));
 
     const dryRun = Deno.env.get("SCRAPER_DRY_RUN") === "1";
 
-    const rawOffers = await scrapeOffers(source, baseUrl);
-    const canonicalOffers = await canonicalizeOffers(source, baseUrl, rawOffers);
+    const totals: OfferCounts = { found: 0, new: 0, changed: 0, same: 0 };
+    const perSource: Partial<Record<Source, OfferCounts>> = {};
 
-    const counts = {
-      found: canonicalOffers.length,
-      new: 0,
-      changed: 0,
-      same: 0,
-    };
+    for (const preset of presets) {
+      const rawOffers = await scrapeOffers(preset.source, preset.baseUrl, preset.cookies);
+      const canonicalOffers = await canonicalizeOffers(
+        preset.source,
+        preset.baseUrl,
+        rawOffers
+      );
 
-    if (canonicalOffers.length > 0) {
-      const result = await upsertOffers(source, canonicalOffers, dryRun);
-      counts.new = result.new;
-      counts.changed = result.changed;
-      counts.same = result.same;
-    }
+      const counts: OfferCounts = {
+        found: canonicalOffers.length,
+        new: 0,
+        changed: 0,
+        same: 0,
+      };
 
-    if (!dryRun) {
-      const now = new Date().toISOString();
-      const { error: logError } = await supabase.from("scrape_log").insert({
-        run_time: now,
-        source,
-        offers_found: counts.found,
-        offers_new: counts.new,
-        offers_changed: counts.changed,
-      });
+      if (canonicalOffers.length > 0) {
+        const result = await upsertOffers(preset.source, canonicalOffers, dryRun);
+        counts.new = result.new;
+        counts.changed = result.changed;
+        counts.same = result.same;
+      }
 
-      if (logError) {
-        console.error("scrape_log insert error:", logError.message ?? logError);
+      totals.found += counts.found;
+      totals.new += counts.new;
+      totals.changed += counts.changed;
+      totals.same += counts.same;
+      perSource[preset.source] = counts;
+
+      if (!dryRun) {
+        const now = new Date().toISOString();
+        const { error: logError } = await supabase.from("scrape_log").insert({
+          run_time: now,
+          source: preset.source,
+          offers_found: counts.found,
+          offers_new: counts.new,
+          offers_changed: counts.changed,
+        });
+
+        if (logError) {
+          console.error("scrape_log insert error:", logError.message ?? logError);
+        }
       }
     }
 
     const responseBody = {
       ok: true,
-      counts,
-      source,
+      counts: totals,
+      requested: sourceParam ?? "us",
+      sources: perSource,
     };
 
     return new Response(JSON.stringify(responseBody), {
