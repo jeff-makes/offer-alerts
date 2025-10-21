@@ -63,8 +63,6 @@ const TRACKING_QUERY_KEYS = new Set([
   "affid",
 ]);
 
-const EXCLUDED_KEYWORDS = ["visa", "aulani"];
-
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -286,19 +284,6 @@ async function scrapeOffers(
 
     const href = linkEl.getAttribute("href");
     if (!href) {
-      continue;
-    }
-
-    const titleText = titleEl.textContent ?? "";
-    const facets = node.getAttribute("data-facets") ?? "";
-    const linkText = href.toLowerCase();
-    const combined = `${titleText} ${facets}`.toLowerCase();
-
-    if (
-      EXCLUDED_KEYWORDS.some(
-        (keyword) => combined.includes(keyword) || linkText.includes(keyword)
-      )
-    ) {
       continue;
     }
 
