@@ -53,15 +53,23 @@ function countOffers(html: string): number {
 Deno.serve(async () => {
   const url = Deno.env.get("URL");
   const key = Deno.env.get("SERVICE_ROLE_KEY");
-  const usUrl = Deno.env.get("DISNEY_BASE_URL");
-  const caUrl = Deno.env.get("DISNEY_CA_URL");
+  const usUrl =
+    Deno.env.get("DISNEY_BASE_URL") ??
+    "https://disneyworld.disney.go.com/special-offers/";
+  const caUrl =
+    Deno.env.get("DISNEY_CA_URL") ??
+    "https://disneyworld.disney.go.com/en_CA/special-offers/";
 
-  if (!url || !key || !usUrl || !caUrl) {
-    console.error("Missing required environment variables");
-    return new Response(JSON.stringify({ ok: false }), {
-      headers: { "content-type": "application/json" },
-      status: 500,
-    });
+  if (!url || !key) {
+    const error = new Error("Missing required environment variables");
+    console.error(error.message);
+    return new Response(
+      JSON.stringify({ ok: false, error: error?.message ?? "unknown" }),
+      {
+        headers: { "content-type": "application/json" },
+        status: 500,
+      }
+    );
   }
 
   const supabase = createClient(url, key);
