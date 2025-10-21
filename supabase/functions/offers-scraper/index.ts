@@ -243,6 +243,8 @@ async function scrapeOffers(
     ".offer-card",
     "article.offer-card",
     "li.offer-card",
+    ".searchResult",
+    "article.searchResult",
   ];
 
   const nodes = new Set<Element>();
@@ -262,15 +264,19 @@ async function scrapeOffers(
     const titleEl =
       node.querySelector("[data-automation-id='offerTitle']") ??
       node.querySelector(".offer-card__title") ??
+      node.querySelector(".offerTitle") ??
       node.querySelector("h3") ??
       node.querySelector("h2");
     const textEl =
       node.querySelector("[data-automation-id='offerDescription']") ??
       node.querySelector(".offer-card__content") ??
+      node.querySelector(".cell.details ul") ??
+      node.querySelector(".cell.details") ??
       node.querySelector("p");
     const categoryEl =
       node.querySelector("[data-automation-id='offerCategory']") ??
-      node.querySelector(".offer-card__category");
+      node.querySelector(".offer-card__category") ??
+      node.querySelector(".detailsOfferTypes");
 
     if (!linkEl || !titleEl || !textEl) {
       continue;
