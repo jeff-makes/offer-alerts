@@ -1,5 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+console.log("Edge function starting… environment check");
+
 type Source = "us" | "ca";
 
 type RawOffer = {
@@ -417,6 +419,7 @@ Deno.serve(async (req) => {
     const baseUrl = source === "ca" ? caUrl : usUrl;
 
     const dryRun = Deno.env.get("SCRAPER_DRY_RUN") === "1";
+    console.log("SCRAPER_DEBUG_SEED:", Deno.env.get("SCRAPER_DEBUG_SEED"));
     const debugSeed = Deno.env.get("SCRAPER_DEBUG_SEED") === "1";
     const variantToggle =
       requestUrl.searchParams.get("_variant") === "1" ||
