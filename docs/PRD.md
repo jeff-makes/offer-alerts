@@ -23,7 +23,7 @@ _Last updated: 2025-10-21._
 ¹ From the original PRD.  
 
 ## 🧭 Product Summary
-**Goal:** Alert fans when new or updated offers appear, filtered by eligibility/region. Geo coverage now comes from deterministic Akamai cookie seeding (US national, Florida-only, Canada). ¹  
+**Goal:** Alert fans when new or updated offers appear, filtered by eligibility/region. Geo coverage now comes from deterministic Akamai cookie seeding (US national, Florida-only, Canada) and the default scrape runs every preset each time. ¹  
 **Users:** Disney planners, APs, bloggers.  
 **MVP Flow:** Daily scrape → compare hash → store/trigger email → link to official site. ¹
 

@@ -47,13 +47,13 @@ Daily Edge Function scrapes WDW offer pages, hashes content, compares to last sn
   ```
 
 ### Locale presets
-- `source=us` (default) scrapes the national catalog plus the Florida-only catalog by replaying the required geo cookies.
+- `source=us` (default) scrapes the national catalog, the Florida-only catalog, and the Canadian catalog in a single run.
 - `source=us-only` limits the run to the national catalog.
 - `source=us-florida` limits to the Florida preset.
 - `source=ca` scrapes the Canadian catalog (forces `en_CA` locale cookies).
 - `source=all` runs every preset (`us`, `us-florida`, `ca`).
 
-Each preset is inserted independently into Supabase with its own `source` key, so downstream tooling can filter or merge regions as needed.
+Each preset is inserted independently into Supabase with its own `source` (`us` or `ca`) and `scrape_variant` (`us`, `us-florida`, `ca`) so downstream tooling can filter or merge regions as needed.
 
 ## Monorepo notes
 - `AGENTS.md` explains build/test commands, code style, security, and PR rules.
