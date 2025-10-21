@@ -36,6 +36,20 @@ const supabase = createClient(SUPABASE_URL ?? "", SUPABASE_SERVICE_ROLE_KEY ?? "
   auth: { persistSession: false },
 });
 
+type CookieJar = Map<string, string>;
+
+const DISNEY_HEADERS = {
+  "user-agent": USER_AGENT,
+  accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+  "accept-language": "en-US,en;q=0.9",
+  "cache-control": "no-cache",
+  pragma: "no-cache",
+  referer: "https://disneyworld.disney.go.com/",
+  "upgrade-insecure-requests": "1",
+};
+const MAX_REDIRECTS = 10;
+
 const TRACKING_QUERY_PREFIXES = ["utm_"];
 const TRACKING_QUERY_KEYS = new Set([
   "cmp",
@@ -136,73 +150,85 @@ async function fetchText(url: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    // Added redirect handling to prevent infinite loops on Disney site
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "user-agent": USER_AGENT,
-      },
-      redirect: "follow",
-    });
-    if (response.url !== url && response.url.includes("disneyinternational.com")) {
-      throw new Error("Redirected to international site — possible locale loop");
+    let currentUrl = url;
+    const visited = new Set<string>();
+    const cookieJar: CookieJar = new Map([["gp", "1"]]);
+
+    for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+      const cookieState = Array.from(cookieJar.entries())
+        .sort(([aName], [bName]) => aName.localeCompare(bName))
+        .map(([name, value]) => `${name}=${value}`)
+        .join(";");
+      const visitKey = `${currentUrl}|${cookieState}`;
+      if (visited.has(visitKey)) {
+        throw new Error(`Redirect loop detected for ${currentUrl}`);
+      }
+      visited.add(visitKey);
+
+      const headers = new Headers(DISNEY_HEADERS);
+      if (cookieJar.size > 0) {
+        headers.set(
+          "cookie",
+          Array.from(cookieJar.entries())
+            .map(([name, value]) => `${name}=${value}`)
+            .join("; ")
+        );
+      }
+
+      const response = await fetch(currentUrl, {
+        signal: controller.signal,
+        headers,
+        redirect: "manual",
+      });
+
+      const setCookie = response.headers.getSetCookie
+        ? response.headers.getSetCookie()
+        : (response.headers.get("set-cookie") ?? "").split(/,(?=[^;]+?=)/);
+      for (const cookie of setCookie) {
+        if (!cookie) {
+          continue;
+        }
+        const [pair] = cookie.split(";", 1);
+        if (!pair) {
+          continue;
+        }
+        const [name, ...rest] = pair.split("=");
+        if (!name || rest.length === 0) {
+          continue;
+        }
+        cookieJar.set(name.trim(), rest.join("=").trim());
+      }
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) {
+          throw new Error(`Redirect ${response.status} missing Location header`);
+        }
+        const nextUrl = new URL(location, currentUrl).toString();
+        if (nextUrl.includes("disneyinternational.com")) {
+          throw new Error("Redirected to international site — possible locale loop");
+        }
+        currentUrl = nextUrl;
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      return await response.text();
     }
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return await response.text();
+
+    throw new Error(`Exceeded ${MAX_REDIRECTS} redirects without landing page`);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function buildDebugOffers(
-  baseUrl: string,
-  variantToggle: boolean
-): RawOffer[] {
-  const stableLink = new URL("/special-offers/spring-savings", baseUrl).toString();
-  const variantLink = new URL("/special-offers/resort-discount", baseUrl).toString();
-  const bonusLink = new URL("/special-offers/dining-plan", baseUrl).toString();
-
-  const offers: RawOffer[] = [
-    {
-      title: "Save Up to 25% on Select Rooms",
-      text: "Book early and enjoy magical savings at select Disney Resort hotels.",
-      link: stableLink,
-      category: "Resort Offer",
-    },
-    {
-      title: "Florida Residents Special",
-      text: variantToggle
-        ? "Residents can save even more on late summer stays."
-        : "Residents can save on late summer stays.",
-      link: variantLink,
-      category: "Florida Residents",
-    },
-  ];
-
-  if (variantToggle) {
-    offers.push({
-      title: "Disney Dining Plan Returns",
-      text: "Bundle a dining plan with your vacation for extra value.",
-      link: bonusLink,
-      category: "Dining",
-    });
-  }
-
-  return offers;
-}
-
 async function scrapeOffers(
   source: Source,
-  baseUrl: string,
-  debugSeed: boolean,
-  variantToggle: boolean
+  baseUrl: string
 ): Promise<RawOffer[]> {
-  if (debugSeed) {
-    return buildDebugOffers(baseUrl, variantToggle);
-  }
-
   const html = await fetchText(baseUrl);
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
@@ -419,13 +445,8 @@ Deno.serve(async (req) => {
     const baseUrl = source === "ca" ? caUrl : usUrl;
 
     const dryRun = Deno.env.get("SCRAPER_DRY_RUN") === "1";
-    console.log("SCRAPER_DEBUG_SEED:", Deno.env.get("SCRAPER_DEBUG_SEED"));
-    const debugSeed = Deno.env.get("SCRAPER_DEBUG_SEED") === "1";
-    const variantToggle =
-      requestUrl.searchParams.get("_variant") === "1" ||
-      (Math.floor(Date.now() / (1000 * 60 * 60)) % 2 === 1);
 
-    const rawOffers = await scrapeOffers(source, baseUrl, debugSeed, variantToggle);
+    const rawOffers = await scrapeOffers(source, baseUrl);
     const canonicalOffers = await canonicalizeOffers(source, baseUrl, rawOffers);
 
     const counts = {

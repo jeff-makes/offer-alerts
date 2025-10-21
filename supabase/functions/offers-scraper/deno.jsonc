@@ -1,1 +1,7 @@
-{ "importMap": "./import_map.json", "compilerOptions": { "strict": true } }
+{
+  "importMap": "./import_map.json",
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["dom", "dom.iterable", "deno.ns"]
+  }
+}
