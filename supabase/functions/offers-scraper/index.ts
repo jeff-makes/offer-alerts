@@ -1,4 +1,4 @@
-import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts";
+import { DOMParser, Element as DomElement } from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 console.log("Edge function starting… environment check");
@@ -247,12 +247,12 @@ async function scrapeOffers(
     "article.searchResult",
   ];
 
-  const nodes = new Set<Element>();
+  const nodes = new Set<DomElement>();
 
   for (const selector of selectors) {
     for (const node of doc.querySelectorAll(selector)) {
-      if (node instanceof Element) {
-        nodes.add(node);
+      if (node instanceof DomElement) {
+        nodes.add(node as DomElement);
       }
     }
   }
