@@ -3,7 +3,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 console.log("Edge function starting… environment check");
 
-type Source = "us" | "us-florida" | "ca";
+type Variant = "us" | "us-florida" | "ca";
+type Source = "us" | "ca";
 
 type RawOffer = {
   title: string;
@@ -14,6 +15,7 @@ type RawOffer = {
 
 type CanonicalOffer = {
   source: Source;
+  variant: Variant;
   title: string;
   text: string;
   link: string;
@@ -67,7 +69,7 @@ function encodeCookieJson(value: Record<string, unknown>): string {
   return encodeURIComponent(JSON.stringify(value));
 }
 
-const COOKIE_PRESETS: Record<Source, Record<string, string>> = {
+const COOKIE_PRESETS: Record<Variant, Record<string, string>> = {
   us: {},
   "us-florida": {
     geolocation_aka_jar: encodeCookieJson({
@@ -119,6 +121,7 @@ const COOKIE_PRESETS: Record<Source, Record<string, string>> = {
 };
 
 type GeoPreset = {
+  variant: Variant;
   source: Source;
   baseUrl: string;
   cookies: Record<string, string>;
@@ -131,9 +134,9 @@ type OfferCounts = {
   same: number;
 };
 
-function resolveSources(sourceParam: string | null): Source[] {
+function resolveVariants(sourceParam: string | null): Variant[] {
   if (!sourceParam || sourceParam === "us") {
-    return ["us", "us-florida"];
+    return ["us", "us-florida", "ca"];
   }
   if (sourceParam === "us-only") {
     return ["us"];
@@ -151,15 +154,21 @@ function resolveSources(sourceParam: string | null): Source[] {
   throw new Error(`Unsupported source parameter '${sourceParam}'`);
 }
 
+function variantToSource(variant: Variant): Source {
+  return variant === "ca" ? "ca" : "us";
+}
+
 function buildPreset(
-  source: Source,
+  variant: Variant,
   baseUrls: { us: string; ca: string }
 ): GeoPreset {
-  const baseUrl = source === "ca" ? baseUrls.ca : baseUrls.us;
+  const source = variantToSource(variant);
+  const baseUrl = variant === "ca" ? baseUrls.ca : baseUrls.us;
   return {
+    variant,
     source,
     baseUrl,
-    cookies: COOKIE_PRESETS[source] ?? {},
+    cookies: COOKIE_PRESETS[variant] ?? {},
   };
 }
 
@@ -194,9 +203,15 @@ function canonicalizeLink(rawLink: string, baseUrl: string): string {
   return url.toString();
 }
 
-function canonicalize(offer: RawOffer, source: Source, baseUrl: string): CanonicalOffer {
+function canonicalize(
+  offer: RawOffer,
+  source: Source,
+  variant: Variant,
+  baseUrl: string
+): CanonicalOffer {
   return {
     source,
+    variant,
     title: normalizeWhitespace(offer.title),
     text: normalizeWhitespace(offer.text),
     link: canonicalizeLink(offer.link, baseUrl),
@@ -214,10 +229,11 @@ async function sha256Hex(s: string): Promise<string> {
 
 async function canonicalizeOffers(
   source: Source,
+  variant: Variant,
   baseUrl: string,
   rawOffers: RawOffer[]
 ): Promise<CanonicalOfferWithHash[]> {
-  const seenLinks = new Set<string>();
+  const seenKeys = new Set<string>();
   const canonicalOffers: CanonicalOfferWithHash[] = [];
 
   for (const raw of rawOffers) {
@@ -225,13 +241,16 @@ async function canonicalizeOffers(
       continue;
     }
 
-    const canonical = canonicalize(raw, source, baseUrl);
+    const canonical = canonicalize(raw, source, variant, baseUrl);
 
-    if (seenLinks.has(canonical.link)) {
+    const dedupeKey = `${variant}:${canonical.link}`;
+    if (seenKeys.has(dedupeKey)) {
       continue;
     }
 
     const payload = {
+      source: canonical.source,
+      variant: canonical.variant,
       title: canonical.title,
       text: canonical.text,
       link: canonical.link,
@@ -240,7 +259,7 @@ async function canonicalizeOffers(
 
     const hash = await sha256Hex(JSON.stringify(payload));
 
-    seenLinks.add(canonical.link);
+    seenKeys.add(dedupeKey);
     canonicalOffers.push({ ...canonical, hash });
   }
 
@@ -419,6 +438,7 @@ async function upsertOffers(
       .from("offers")
       .select("id, hash")
       .eq("source", source)
+      .eq("scrape_variant", offer.variant)
       .eq("link", offer.link)
       .maybeSingle();
 
@@ -434,6 +454,7 @@ async function upsertOffers(
 
       const insertPayload = {
         source,
+        scrape_variant: offer.variant,
         title: offer.title,
         text: offer.text,
         link: offer.link,
@@ -456,6 +477,8 @@ async function upsertOffers(
 
       const versionPayload = {
         offer_id: inserted.id,
+        source,
+        scrape_variant: offer.variant,
         hash: offer.hash,
         captured_at: now,
         title: offer.title,
@@ -482,6 +505,8 @@ async function upsertOffers(
       }
 
       const updatePayload = {
+        source,
+        scrape_variant: offer.variant,
         title: offer.title,
         text: offer.text,
         link: offer.link,
@@ -502,6 +527,8 @@ async function upsertOffers(
 
       const versionPayload = {
         offer_id: existing.id,
+        source,
+        scrape_variant: offer.variant,
         hash: offer.hash,
         captured_at: now,
         title: offer.title,
@@ -556,18 +583,23 @@ Deno.serve(async (req) => {
       "https://disneyworld.disney.go.com/en_CA/special-offers/";
 
     const baseUrls = { us: usUrl, ca: caUrl };
-    const sourcesToRun = resolveSources(sourceParam);
-    const presets = sourcesToRun.map((src) => buildPreset(src, baseUrls));
+    const variantsToRun = resolveVariants(sourceParam);
+    const presets = variantsToRun.map((variant) => buildPreset(variant, baseUrls));
 
     const dryRun = Deno.env.get("SCRAPER_DRY_RUN") === "1";
 
     const totals: OfferCounts = { found: 0, new: 0, changed: 0, same: 0 };
-    const perSource: Partial<Record<Source, OfferCounts>> = {};
+    const perVariant: Partial<Record<Variant, OfferCounts>> = {};
 
     for (const preset of presets) {
-      const rawOffers = await scrapeOffers(preset.source, preset.baseUrl, preset.cookies);
+      const rawOffers = await scrapeOffers(
+        preset.source,
+        preset.baseUrl,
+        preset.cookies
+      );
       const canonicalOffers = await canonicalizeOffers(
         preset.source,
+        preset.variant,
         preset.baseUrl,
         rawOffers
       );
@@ -590,13 +622,13 @@ Deno.serve(async (req) => {
       totals.new += counts.new;
       totals.changed += counts.changed;
       totals.same += counts.same;
-      perSource[preset.source] = counts;
+      perVariant[preset.variant] = counts;
 
       if (!dryRun) {
         const now = new Date().toISOString();
         const { error: logError } = await supabase.from("scrape_log").insert({
           run_time: now,
-          source: preset.source,
+          source: preset.variant,
           offers_found: counts.found,
           offers_new: counts.new,
           offers_changed: counts.changed,
@@ -612,7 +644,7 @@ Deno.serve(async (req) => {
       ok: true,
       counts: totals,
       requested: sourceParam ?? "us",
-      sources: perSource,
+      variants: perVariant,
     };
 
     return new Response(JSON.stringify(responseBody), {
