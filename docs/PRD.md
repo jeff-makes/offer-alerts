@@ -29,6 +29,7 @@ _Last updated: 2025-10-21._
 
 ## 🗂️ Database Schema (Supabase)
 - `offers(id, title, text, link, category, hash, created_at)` ¹  
+- Column additions: `source` (`us`|`ca`) and `scrape_variant` (`us`, `us-florida`, `ca`) track which geo preset produced the row.
 - `users(id, name, email, region_tag, created_at)` ¹  
 - `scrape_log(id, run_time, offers_found, offers_new, offers_changed)` ¹
 

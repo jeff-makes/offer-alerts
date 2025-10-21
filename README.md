@@ -13,7 +13,7 @@ Get notified when new or updated Walt Disney World offers go live on the officia
 - `supabase db push` to apply migrations.
 - `supabase functions deploy offers-scraper`
 - Create a **Scheduled** job in Supabase to run `offers-scraper` daily.
-- The Edge Function seeds Akamai geo cookies to capture every visible offer; no filters (Visa/Aulani) are applied upstream anymore.
+- The Edge Function seeds Akamai geo cookies to capture every visible offer; no filters (Visa/Aulani) are applied upstream anymore. Offers store both `source` (site family: `us` or `ca`) and `scrape_variant` (`us`, `us-florida`, `ca`) for downstream segmentation.
 
 ### Environment
 Copy `.env.example` to your local/hosting envs and fill in:

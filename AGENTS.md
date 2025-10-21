@@ -13,7 +13,7 @@ Disney World Offers Alert monitors official WDW offer pages and emails subscribe
 
 ## Testing instructions
 - Unit tests (web): `npm test` (add Vitest/Jest as needed)
-- Function dry-run: `supabase functions serve offers-scraper` then hit the local endpoint. Default execution scrapes both the national (`source=us`) and Florida-only (`source=us-florida`) catalogs; pass `?source=us-only`, `?source=us-florida`, `?source=ca`, or `?source=all` to target specific presets.
+- Function dry-run: `supabase functions serve offers-scraper` then hit the local endpoint. Default execution scrapes both the national (`source=us`) and Florida-only (`source=us-florida`) catalogs; pass `?source=us-only`, `?source=us-florida`, `?source=ca`, or `?source=all` to target specific presets. Rows now store the preset on `scrape_variant`.
 
 ## Security considerations
 - Never commit secrets. Use Vercel/Supabase dashboards for env vars.
