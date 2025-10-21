@@ -20,7 +20,7 @@ Copy `.env.example` to your local/hosting envs and fill in:
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `KIT_API_KEY`, `OPENAI_API_KEY`.
 
 ### Architecture
-Daily Edge Function scrapes WDW offer pages, hashes content, compares to last snapshot, writes to `offers`, logs in `scrape_log`, and triggers Kit segmented emails when new/changed offers are found. (Flow per PRD.)
+Daily Edge Function scrapes WDW offer pages, canonicalizes content (title/text/link/category) into a deterministic JSON payload, hashes it, compares against the last snapshot, writes to `offers`, logs in `scrape_log`, and, when a hash changes, captures the previous version in `offer_versions` before updating the live row. (Flow per PRD.)
 
 ## Development
 - Deploy the scraper with `supabase functions deploy offers-scraper --project-ref esuzczidystwsubdapzp`.

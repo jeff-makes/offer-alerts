@@ -28,7 +28,7 @@ _Last updated: 2025-10-21._
 **MVP Flow:** Daily scrape → compare hash → store/trigger email → link to official site. ¹
 
 ## 🗂️ Database Schema (Supabase)
-- `offers(id, title, text, link, category, hash, created_at)` ¹  
+- `offers(id, title, text, link, category, hash, first_seen, last_seen, last_changed, source, scrape_variant)` — live snapshot per locale; hash is SHA-256 over canonicalized title/text/link/category  
 - Column additions: `source` (`us`|`ca`) and `scrape_variant` (`us`, `us-florida`, `ca`) track which geo preset produced the row.
 - `users(id, name, email, region_tag, created_at)` ¹  
 - `scrape_log(id, run_time, offers_found, offers_new, offers_changed)` ¹
@@ -42,7 +42,7 @@ _Last updated: 2025-10-21._
 ## v0.2 Milestone Summary
 - Scraper deployed and verified end-to-end.
 - Hashing + diff detection implemented.
-- `offer_versions` table tracks historical changes.
+- `offer_versions` table tracks historical changes; rows are captured whenever a hash changes. 
 - Debug seed mode added for offline testing.
 - Geo presets (national US, Florida, Canada) seeded via cookies; no upstream exclusions (Visa/Aulani) — downstream segmentation handles eligibility.
 - Environment variables verified via Supabase secrets.
