@@ -134,12 +134,17 @@ async function fetchText(url: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
+    // Added redirect handling to prevent infinite loops on Disney site
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
         "user-agent": USER_AGENT,
       },
+      redirect: "follow",
     });
+    if (response.url !== url && response.url.includes("disneyinternational.com")) {
+      throw new Error("Redirected to international site — possible locale loop");
+    }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
