@@ -30,3 +30,7 @@ Disney World Offers Alert monitors official WDW offer pages and emails subscribe
 
 ## Large monorepo guidance
 - Add nested `AGENTS.md` to `/web` and to each function for overrides if complexity grows.
+
+## Docs guidance
+- Keep milestone notes concise and aligned with the PRD/README tone.
+- Edge scraper enumerates geo presets (`us`, `us-florida`, `ca`) by seeding Akamai cookies; document any future locale additions in the PRD and README.
